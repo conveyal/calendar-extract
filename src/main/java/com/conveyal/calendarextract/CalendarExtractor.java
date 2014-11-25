@@ -1,16 +1,24 @@
 package com.conveyal.calendarextract;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.joda.time.DateTime;
+import org.mapdb.Fun;
+import org.mapdb.Fun.Tuple2;
 
 import com.conveyal.gtfs.GTFSFeed;
 import com.conveyal.gtfs.model.Calendar;
 import com.conveyal.gtfs.model.CalendarDate;
 import com.conveyal.gtfs.model.Service;
+import com.conveyal.gtfs.model.StopTime;
+import com.conveyal.gtfs.model.Trip;
 
 /**
  * Extract service for a given day from a GTFS feed and create calendars from it.
@@ -57,6 +65,10 @@ public class CalendarExtractor {
 				cal.friday = friday;
 				cal.saturday = saturday;
 				cal.sunday = sunday;
+				
+				cal.start_date = dateTimeToInt(start);
+				cal.end_date = dateTimeToInt(end);
+				
 				cal.service = new Service(service.service_id);
 				cal.service.calendar = cal;
 				
@@ -99,8 +111,35 @@ public class CalendarExtractor {
 	 */
 	public void apply () {
 		feed.services.clear();
-		for (String id : services.keySet()) {
+		Set<String> serviceIds = services.keySet();
+		
+		for (String id : serviceIds) {
 			feed.services.put(id, services.get(id));
+		}
+		
+		// get rid of trips that no longer exist
+		HashSet<String> removedTrips = new HashSet<String>();
+		Iterator<Trip> ti = feed.trips.values().iterator();
+		while (ti.hasNext()) {
+			Trip t = ti.next();
+								
+			if (!serviceIds.contains(t.service.service_id)) {
+				ti.remove();
+				// MapDB is very slow at deletion; it's faster to save the trip IDs we want to delete
+				// and then loop over every stop time and delete the ones we don't want than to delete trips one at a time
+				// When you think about it, this sort of makes sense, since MapDB is disk-backed; this does not require lots of
+				// seeking
+				removedTrips.add(t.trip_id);
+			}
+		}
+		
+		Iterator<Tuple2> stopTimeIterator = feed.stop_times.keySet().iterator();
+		while (stopTimeIterator.hasNext()) {
+			Tuple2 n = stopTimeIterator.next();
+			
+			if (removedTrips.contains(n.a)) {
+				stopTimeIterator.remove();
+			}
 		}
 	}
 	
@@ -109,5 +148,12 @@ public class CalendarExtractor {
 	 */
 	private static int b2i(boolean b) {
 		return b ? 1 : 0;
+	}
+	
+	/**
+	 * Convert a datetime to an int YYYYMMDD
+	 */
+	private static int dateTimeToInt (DateTime d) {
+		return d.getYear() * 10000 + d.getMonthOfYear() * 100 + d.getDayOfMonth();
 	}
 }
