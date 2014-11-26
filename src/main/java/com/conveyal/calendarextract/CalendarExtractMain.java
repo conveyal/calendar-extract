@@ -65,8 +65,6 @@ public class CalendarExtractMain
         
         e.extractCalendar(date, start, end, monday, tuesday, wednesday, thursday, friday, saturday, sunday);
         
-        e.apply();
-        
         inGtfs.toFile(args[5]);
     }
     
